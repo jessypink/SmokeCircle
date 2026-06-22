@@ -24,6 +24,22 @@ const getErrorMessage = (error: unknown) => {
   return 'Неизвестная ошибка';
 };
 
+const normalizeUsername = (username: string) => username.trim();
+const normalizeInviteCode = (inviteCode?: string) => inviteCode?.trim().toUpperCase();
+
+async function getGroup(groupId: string) {
+  const { data, error } = await supabase
+    .from('groups')
+    .select('*')
+    .eq('id', groupId)
+    .single();
+
+  if (error) throw error;
+  if (!data) throw new Error('Группа пользователя не найдена');
+
+  return data;
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -32,62 +48,54 @@ export const useAuthStore = create<AuthState>()(
       loading: false,
       error: null,
 
-      login: async (username: string, inviteCode?: string) => {
+      login: async (rawUsername: string, rawInviteCode?: string) => {
         set({ loading: true, error: null });
 
         try {
-          let groupId: string;
-          let groupData: Group | null = null;
+          const username = normalizeUsername(rawUsername);
+          const inviteCode = normalizeInviteCode(rawInviteCode);
 
-          if (inviteCode) {
-            const { data, error } = await supabase
-              .from('groups')
-              .select('*')
-              .eq('invite_code', inviteCode.trim().toUpperCase())
-              .single();
-
-            if (error) throw error;
-            if (!data) throw new Error('Неверный invite-код');
-
-            groupData = data;
-            groupId = data.id;
-          } else {
-            const inviteCodeNew = Math.random().toString(36).substring(2, 10).toUpperCase();
-            const { data, error } = await supabase
-              .from('groups')
-              .insert({ name: `${username}'s Circle`, invite_code: inviteCodeNew })
-              .select()
-              .single();
-
-            if (error) throw error;
-            if (!data) throw new Error('Группа не была создана');
-
-            groupData = data;
-            groupId = data.id;
+          if (!username) {
+            throw new Error('Введи username');
           }
 
-          let { data: existing } = await supabase
+          const { data: existingUser, error: userLookupError } = await supabase
             .from('users')
             .select('*')
             .eq('username', username)
-            .single();
+            .maybeSingle();
 
-          if (!existing) {
-            const { data: newUser, error } = await supabase
-              .from('users')
-              .insert({ username, group_id: groupId })
-              .select()
-              .single();
+          if (userLookupError) throw userLookupError;
 
-            if (error) throw error;
-            if (!newUser) throw new Error('Пользователь не был создан');
-
-            existing = newUser;
-          } else if (existing.group_id !== groupId) {
-            throw new Error('Этот username уже используется в другой группе');
+          if (existingUser) {
+            const existingGroup = await getGroup(existingUser.group_id);
+            set({ user: existingUser, group: existingGroup });
+            return true;
           }
 
-          set({ user: existing, group: groupData });
+          if (!inviteCode) {
+            throw new Error('Пользователь не найден. Для первого входа нужен invite-код группы.');
+          }
+
+          const { data: groupData, error: groupLookupError } = await supabase
+            .from('groups')
+            .select('*')
+            .eq('invite_code', inviteCode)
+            .single();
+
+          if (groupLookupError) throw groupLookupError;
+          if (!groupData) throw new Error('Неверный invite-код');
+
+          const { data: newUser, error: createUserError } = await supabase
+            .from('users')
+            .insert({ username, group_id: groupData.id })
+            .select()
+            .single();
+
+          if (createUserError) throw createUserError;
+          if (!newUser) throw new Error('Пользователь не был создан');
+
+          set({ user: newUser, group: groupData });
           return true;
         } catch (error) {
           set({ error: getErrorMessage(error) });

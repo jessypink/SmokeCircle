@@ -7,15 +7,14 @@ export default function AuthScreen() {
   const [inviteCode, setInviteCode] = useState('');
   const { login, error, loading } = useAuthStore();
 
-  const handleCreate = () => login(username);
-  const handleJoin = () => login(username, inviteCode);
+  const handleLogin = () => login(username, inviteCode || undefined);
 
   return (
-    <Container size="sm" py="xl">
+    <Container size="sm" px="md" py="xl">
       <Paper shadow="md" p="xl" radius="md">
         <Title order={2} ta="center" mb="lg">SmokeCircle</Title>
         <Text c="dimmed" ta="center" mb="xl">
-          Приватный трекер для друзей
+          Вход по нику. Если ты уже был в группе, invite-код не нужен.
         </Text>
 
         <Stack>
@@ -25,11 +24,12 @@ export default function AuthScreen() {
             autoComplete="username"
             placeholder="Kirill"
             value={username}
-            onChange={(e) => setUsername(e.currentTarget.value.trim())}
+            onChange={(e) => setUsername(e.currentTarget.value)}
           />
 
           <TextInput
-            label="Invite Code (если есть)"
+            label="Invite Code"
+            description="Нужен только для первого входа нового пользователя"
             name="organization"
             autoComplete="organization"
             placeholder="ABC12345"
@@ -37,12 +37,8 @@ export default function AuthScreen() {
             onChange={(e) => setInviteCode(e.currentTarget.value.trim().toUpperCase())}
           />
 
-          <Button fullWidth onClick={handleCreate} disabled={!username} loading={loading}>
-            Создать новую группу
-          </Button>
-
-          <Button fullWidth variant="outline" onClick={handleJoin} disabled={!username || !inviteCode} loading={loading}>
-            Присоединиться по invite-коду
+          <Button fullWidth onClick={handleLogin} disabled={!username.trim()} loading={loading}>
+            Войти
           </Button>
 
           {error && <Alert color="red">{error}</Alert>}
